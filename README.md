@@ -54,14 +54,29 @@ Tests run inside the real game through the [Atomcraft TestHarness](https://githu
 | --- | --- |
 | [`src/`](src/) | the mod &rarr; `build/ActualResolution.zip` |
 | [`test/`](test/) | its tests &rarr; `build/ActualResolution.Test.zip` |
+| [`conformance/`](conformance/) | a property of the game, naming no mod &rarr; `build/ActualResolutionConformance.zip` |
 | [`minimal/`](minimal/) | the mechanism in one file, not built and not equivalent — read its header |
 | [`lib/`](lib/) | shell helpers shared by the three scripts |
 
 The tests are a peer mod, not a module of this one: the loader treats a missing dependency as an error, so a test module shipped inside this zip would show a red entry in the loader report for every player who had not also installed `TestHarness`.
 
+### The retirement suite
+
+[`test/RetirementTests.cs`](test/RetirementTests.cs) asserts the **game** is still what this mod works around, rather than that the mod is correct. A failure there is good news: it means a game update made this unnecessary, and the test's doc comment says what to delete. Kept out of the default run, because mixing the two questions makes a red suite unreadable:
+
+```sh
+./run-tests.sh --retirement
+```
+
+It reads the project settings rather than the live viewport, because this mod resizes the render target at runtime and never touches the setting — asking the viewport would just report the mod back to itself.
+
+### The conformance suite
+
+[`conformance/`](conformance/) is a peer mod that **names no mod** and depends only on the harness, so it can be installed alongside this mod, alongside a rival, or alongside none. It asks whether the game's UI is still one fixed-size Control with top-left anchors. That is a property this mod *depends on* rather than fixes: if the game ever anchored its UI to the viewport, the compensating scale here would be applied to a layout that had already adapted, so a failure is bad news.
+
 ## Tests
 
-Nine are arithmetic and run headless, so a game update that moves the camera's constants fails the ordinary suite. Four need a display.
+Thirteen run headless, so a game update that moves the camera's constants fails the ordinary suite. Four need a display. One more is the retirement suite, which the default run leaves out.
 
 - `TheFrameReachesTheWindowUnresampled` measures the blit rather than looking at it, because a viewport readback samples the render target *before* the engine scales it to the window: a frame about to be resampled reads back perfect. Nothing inside the game can photograph this defect, which is why it went unnoticed.
 - `TheUiIsScaledTheWayTheEngineUsedTo` and `TheGameFillsTheFrameItIsGiven` cover the half of the job that is not the world. The second also writes the frame out as an artifact, because "the UI is laid out sensibly" is not a thing a test can assert and is a thing somebody should look at after a game update.

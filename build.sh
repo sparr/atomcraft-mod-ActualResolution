@@ -58,7 +58,7 @@ PROJECTS=(src/ActualResolution.csproj)
 # The test mods need the harness assembly. Skip them rather than fail when it is not there, so
 # a plain build of the mod works in a checkout that has never run the suite.
 if [ -f "$TEST_ROOT/harness/Atomcraft.TestHarness.dll" ]; then
-    PROJECTS+=(test/ActualResolution.Test.csproj)
+    PROJECTS+=(test/ActualResolution.Test.csproj conformance/ActualResolutionConformance.csproj)
 else
     echo "==> no harness assembly under $TEST_ROOT/harness; skipping the test mod(s)"
 fi

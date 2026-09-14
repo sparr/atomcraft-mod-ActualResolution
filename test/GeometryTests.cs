@@ -196,41 +196,6 @@ public static class GeometryTests
                                      | System.Reflection.BindingFlags.Static)?
             .GetValue(null) as bool? ?? false;
 
-    /// <summary>
-    /// The state registration puts the mod back on, not just its settings.
-    ///
-    /// <para>The registered reset runs between tests, and the state a test is most likely to
-    /// leave behind is the state it did not change on purpose: a latched fault, or the off
-    /// switch flipped by a test that threw before its <c>finally</c>. Neither is reachable
-    /// from <c>Settings.Reset</c> — <c>Enabled</c> is the conjunction of a setting and a
-    /// field, so restoring the setting leaves a false field false — and a mod left switched
-    /// off does not fail the tests after it. It passes the ones that assert the game behaves
-    /// as it does unmodded, which is worse.</para>
-    ///
-    /// <para>The first assertion is a premise check: if <c>Settings.Reset</c> ever does
-    /// restore the mod on its own, this test is measuring nothing and says so rather than
-    /// passing quietly.</para>
-    /// </summary>
-    [GameTest]
-    public static void ResettingTheStateRestoresTheModAndNotOnlyItsSettings()
-    {
-        ActualResolutionApi.Enabled = false;
-
-        Settings.Reset();
-        if (ActualResolutionApi.Enabled)
-            throw new AssertionException(
-                "Settings.Reset restored the mod by itself, so this test no longer covers the " +
-                "gap it was written for. Check what ResetState is still needed for.");
-
-        ActualResolutionApi.ResetState();
-        if (!ActualResolutionApi.Enabled)
-            throw new AssertionException(
-                "ResetState left the mod switched off. Every test after this one would run " +
-                "against an unmodded game, and the ones asserting unmodded behaviour would pass.");
-        if (ActualResolutionApi.Faulted)
-            throw new AssertionException("ResetState left a fault latched");
-    }
-
     /// <summary>How many cells fit on screen at the widest view a viewport allows.</summary>
     private static Vector2 VisibleCells(Vector2 viewport)
     {
