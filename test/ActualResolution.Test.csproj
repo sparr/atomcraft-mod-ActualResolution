@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ActualResolution.Test</AssemblyName>
+    <RootNamespace>ActualResolution.Test</RootNamespace>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <ModId>ActualResolution.Test</ModId>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Atomcraft">
+      <HintPath>$(GameDataDir)/Atomcraft.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(GameDataDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Atomcraft.TestHarness">
+      <HintPath>$(TestHarnessDir)/Atomcraft.TestHarness.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The mod under test. Referenced, never shipped: the loader loads it from its own zip. -->
+    <ProjectReference Include="../src/ActualResolution.csproj">
+      <Private>false</Private>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- A real build must not proceed without the harness assembly. A design-time build is a
+       different matter: that is how an editor's language server loads this project, it gets
+       neither the environment nor the command line the shell scripts set up, and failing it
+       costs every other language feature in this directory rather than just the harness
+       types. So warn there and let the load finish. -->
+  <Target Name="RequireTestHarnessDir" BeforeTargets="ResolveAssemblyReferences">
+    <PropertyGroup>
+      <_NoHarness Condition="'$(TestHarnessDir)' == '' OR !Exists('$(TestHarnessDir)/Atomcraft.TestHarness.dll')">true</_NoHarness>
+      <_HarnessDesignTime Condition="'$(DesignTimeBuild)' == 'true'">true</_HarnessDesignTime>
+      <_HarnessHint>No Atomcraft.TestHarness.dll under TestHarnessDir='$(TestHarnessDir)'. Build the harness first, then build this through ./run-tests.sh or the harness checkout's build-mod.sh.</_HarnessHint>
+    </PropertyGroup>
+
+    <Error   Condition="'$(_NoHarness)' == 'true' AND '$(_HarnessDesignTime)' != 'true'" Text="$(_HarnessHint)" />
+    <Warning Condition="'$(_NoHarness)' == 'true' AND '$(_HarnessDesignTime)' == 'true'" Text="$(_HarnessHint)" />
+  </Target>
+
+  <Import Project="../ModZip.targets" />
+
+</Project>
