@@ -64,8 +64,24 @@ internal static class WindowWatcher
     /// </summary>
     internal static bool Faulted { get; private set; }
 
+    /// <summary>What went wrong, kept so a test can assert on it rather than grep the log.</summary>
+    internal static Exception? Fault { get; private set; }
+
     /// <summary>Whether the resize signal has been subscribed to, so it is not subscribed twice.</summary>
     private static bool _subscribed;
+
+    /// <summary>
+    /// Unlatches the fault, so a session that recovers is not disabled for the rest of the run.
+    ///
+    /// <para>Deliberately does not touch <see cref="_subscribed"/>: the signal connection
+    /// outlives any test and re-subscribing would attach a second handler to the same
+    /// signal.</para>
+    /// </summary>
+    internal static void Reset()
+    {
+        Faulted = false;
+        Fault = null;
+    }
 
     [HarmonyPostfix]
     [HarmonyPatch(typeof(Game), "_Ready")]
@@ -122,6 +138,7 @@ internal static class WindowWatcher
         catch (Exception e)
         {
             Faulted = true;
+            Fault = e;
             Log.Error("sizing the render target threw and has been disabled for this session. " +
                       "The game is unaffected apart from drawing its fixed 1600x900 frame " +
                       "again, as it does unmodded.");

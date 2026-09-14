@@ -47,6 +47,13 @@ public static class ActualResolutionApi
         }
     }
 
+    /// <summary>
+    /// Whether sizing the frame threw and was disabled for the session. The game then draws
+    /// its shipped 1600x900 frame as it does unmodded, which is a working game and a mod that
+    /// is no longer doing anything; see the log for what went wrong.
+    /// </summary>
+    public static bool Faulted => WindowWatcher.Faulted;
+
     /// <summary>How many window pixels one render-target pixel currently becomes: 1 when the
     /// game is drawing at the window's own resolution.</summary>
     public static int Divisor => RenderTarget.Divisor;
@@ -78,6 +85,49 @@ public static class ActualResolutionApi
                    && scale.X >= 1f
                    && Mathf.IsEqualApprox(scale.X, Mathf.Round(scale.X));
         }
+    }
+
+    /// <summary>
+    /// Returns the mod to the state it starts a session in: settings at their defaults, no
+    /// fault latched, and the frame actually sized again.
+    ///
+    /// <para><b>Why this exists and <c>Settings.Reset</c> alone does not do.</b> Settings are
+    /// the state a test changes on purpose; this is the state a test leaves behind by
+    /// failing. The fault latch is set once and never cleared, so a single throw leaves the
+    /// game drawing its shipped 1600x900 frame for every test after it — and a test that
+    /// asserts something true of the unmodded game passes anyway, which is a green run that
+    /// measured nothing.</para>
+    ///
+    /// <para><c>_enabled</c> cannot be reached from <c>Settings.Reset</c> at all:
+    /// <see cref="Enabled"/> is the conjunction of the two. That matters more here than it
+    /// would have before this mod became event-driven — switching it off hands the render
+    /// target back to the engine, and with no per-frame sync nothing re-applies it until the
+    /// window next changes size, which in a fixed-window test run never happens. So the reset
+    /// re-syncs rather than only clearing flags.</para>
+    ///
+    /// <para>A mod built on the simulation clears its latch on <c>Simulation.Init</c> and
+    /// <c>Simulation.Reset</c>, which is where the mod template puts it. This one never
+    /// touches the simulation and has no such hook, so the reset belongs to the state
+    /// registry instead. Registered by the test mod; see its <c>ModEntry</c>.</para>
+    /// </summary>
+    public static void ResetState()
+    {
+        Settings.Reset();
+        _enabled = true;
+        WindowWatcher.Reset();
+        WindowWatcher.Sync();          // enabled again, so put the frame and the UI back
+    }
+
+    /// <summary>
+    /// Settings and runtime state in one line, for a failure message. Names the fault latch
+    /// explicitly, because "the mod is switched off" is the explanation a confusing failure
+    /// most often has.
+    /// </summary>
+    public static string DescribeState()
+    {
+        var viewport = ViewportSize;
+        return $"{Settings.Describe()} faulted={WindowWatcher.Faulted} " +
+               $"viewport={viewport.X}x{viewport.Y} divisor={Divisor} uiScale={UiScale}";
     }
 
     /// <summary>

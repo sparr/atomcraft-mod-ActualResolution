@@ -21,5 +21,26 @@ public static class ModEntry
     /// <summary>The harness this mod is written against. Its 0.x API changes between minors.</summary>
     public const string HarnessVersion = "0.4";
 
-    public static void Initialize() => Harness.RequireVersion(HarnessVersion);
+    public static void Initialize()
+    {
+        Harness.RequireVersion(HarnessVersion);
+
+        // Configuration is state, and it is the kind no rectangle describes. Registering it
+        // means a test that changes a knob and then throws cannot quietly change the meaning of
+        // every test after it. No checksum: these are settings a test sets deliberately, not
+        // something the simulation writes to.
+        //
+        // The reset covers the mod's runtime state as well as its settings, and that half is
+        // the half that bites. A fault latch is set once and never cleared, so one throw
+        // disables the mod for the rest of the run -- and a test asserting something true of
+        // the unmodded game still passes with the mod dead, which is a green run that measured
+        // nothing. The mod template clears its latch on Simulation.Init and Simulation.Reset;
+        // these mods never touch the simulation and have no such hook, so it belongs here.
+        StateRegistry.Register(new StateSpec
+        {
+            Name = "actualresolution",
+            OnReset = ActualResolutionApi.ResetState,
+            OnDescribe = ActualResolutionApi.DescribeState,
+        });
+    }
 }
