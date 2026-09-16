@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ActualResolution.Test</AssemblyName>
     <RootNamespace>ActualResolution.Test</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <LangVersion>latest</LangVersion>
     <ModId>ActualResolution.Test</ModId>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
