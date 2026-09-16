@@ -23,10 +23,14 @@
 //   - stop the zoom further out than the shipped game did, because the engine's blit used to
 //     supply the last 1.2x of magnification for free (FollowCam's flat 1.5 ceiling);
 //   - strand the HUD in the top-left corner, because Game.UI is a fixed 1600x900 Control with
-//     every anchor at 0 and only the blit was ever making it reach the edges.
+//     every anchor at 0 and only the blit was ever making it reach the edges;
+//   - draw the shadow and fog layer off the terrain it belongs to, because Shadowmap.tres maps
+//     its texture with SCREEN_UV * viewport_size and the game never assigns that uniform: it
+//     carries the 1600x900 saved in the material, which was right only while the frame was.
 //
 // The real mod exists to restate all of that for the frame actually in use. This file gives a
-// sharp world and a broken HUD. It is a demonstration of the mechanism, not a smaller mod.
+// sharp world, a broken HUD, and a misplaced shadow layer. It is a demonstration of the
+// mechanism, not a smaller mod.
 //
 // If you do want to ship something from here, ship the real one:
 //

@@ -10,6 +10,7 @@ Requires [GodotMonoModLoader](https://github.com/sacroimper/GodotMonoModLoader).
 | --- | --- | --- |
 | Render target | always 1600x900, rescaled to the window | the window's size (or a whole fraction of it), blitted by a whole number |
 | UI | 1600x900 layout, rescaled with the frame | same layout, scaled by the same factor the blit used to apply |
+| Shadow and fog | mapped with a 1600x900 baked into its shader | mapped with the frame the game is actually drawing |
 | Widest view | ~265 cells across | ~265 cells across |
 | Zoom-in limit | 1.5, whatever the window | scaled with the frame, so the closest view looks the same |
 | Zoom feel | smooth and continuous | unchanged |
@@ -44,6 +45,14 @@ To exercise the interesting case, run the display tests at a resolution the ship
 XVFB_GEOMETRY=1920x1080x24 ./run-tests.sh --headful
 ```
 
+**`XVFB_GEOMETRY` alone does not change the render target.** It sizes the virtual screen; the game's window comes from `DisplayResolution` in the test prefix's own `DeviceSettings.json`, which defaults to 1280x720 and stays there however big the screen is. To reach a divisor above 1, raise that too — it lives at `$TEST_ROOT/prefix/pfx/drive_c/users/steamuser/AppData/Roaming/Godot/app_userdata/Atomcraft/DeviceSettings.json` — and then run at a matching screen size:
+
+```sh
+XVFB_GEOMETRY=2560x1440x24 ./run-tests.sh --headful
+```
+
+With `DisplayResolution` at 2560x1440 that gives a 2560x1420 window and a 1280x710 render target at 2x, which is the case where the target is neither the window nor the design frame: the one that catches a fix assuming those are the same thing.
+
 Tests run inside the real game through the [Atomcraft TestHarness](https://github.com/sparr/atomcraft-mod-TestHarness), against a patched *copy* of the install in a throwaway prefix, so your saves and your real game are never touched. `harness.conf` names the pinned harness release; there are no path defaults, because a path guessed from a sibling directory goes stale silently the first time that directory is renamed. Everything stays under a test root private to this project.
 
 **Build releases with `--release`.** Debug is the default because that is what you want while working, but a Debug assembly carries `DebuggableAttribute` with `DisableOptimizations`, which turns the JIT off for it entirely.
@@ -68,19 +77,24 @@ The tests are a peer mod, not a module of this one: the loader treats a missing 
 ./run-tests.sh --retirement
 ```
 
-It reads the project settings rather than the live viewport, because this mod resizes the render target at runtime and never touches the setting — asking the viewport would just report the mod back to itself.
+`TheGameStillRendersIntoAFixedFrame` reads the project settings rather than the live viewport, because this mod resizes the render target at runtime and never touches the setting — asking the viewport would just report the mod back to itself. `TheGameStillNeverSetsTheShadowShadersFrameSize` writes a sentinel into the shader uniform the game leaves alone and checks that several drawn frames later it is still there, which reports on the running game rather than on what the decompiled source said the day it was written.
 
 ### The conformance suite
 
-[`conformance/`](conformance/) is a peer mod that **names no mod** and depends only on the harness, so it can be installed alongside this mod, alongside a rival, or alongside none. It asks whether the game's UI is still one fixed-size Control with top-left anchors. That is a property this mod *depends on* rather than fixes: if the game ever anchored its UI to the viewport, the compensating scale here would be applied to a layout that had already adapted, so a failure is bad news.
+[`conformance/`](conformance/) is a peer mod that **names no mod** and depends only on the harness, so it can be installed alongside this mod, alongside a rival, or alongside none. It asks two things.
+
+`TheUiIsOneFixedSizeControlWithTopLeftAnchors` is a property this mod *depends on* rather than fixes: if the game ever anchored its UI to the viewport, the compensating scale here would be applied to a layout that had already adapted, so a failure is bad news.
+
+`TheShadowLayerIsMappedWithTheRealFrameSize` is a property any mod that resizes the render target has to maintain, because the game does not maintain it. It measures the live viewport rather than anything the mod reports, which makes it an independent check rather than the mod reporting itself back. It came from the [Zoooom](../Zoooom/) project, which depends on the property and does not affect it; it lives here too because a suite that never runs beside the fix tests nothing about the fix.
 
 ## Tests
 
-Thirteen run headless, so a game update that moves the camera's constants fails the ordinary suite. Four need a display. One more is the retirement suite, which the default run leaves out.
+Fourteen run headless, so a game update that moves the camera's constants fails the ordinary suite. Four need a display. Two more are the retirement suite, which the default run leaves out.
 
 - `TheFrameReachesTheWindowUnresampled` measures the blit rather than looking at it, because a viewport readback samples the render target *before* the engine scales it to the window: a frame about to be resampled reads back perfect. Nothing inside the game can photograph this defect, which is why it went unnoticed.
 - `TheUiIsScaledTheWayTheEngineUsedTo` and `TheGameFillsTheFrameItIsGiven` cover the half of the job that is not the world. The second also writes the frame out as an artifact, because "the UI is laid out sensibly" is not a thing a test can assert and is a thing somebody should look at after a game update.
 - `TheWidestViewShowsTheSameWorldAtEveryResolution` is the invariant that makes resizing the frame safe at all.
+- `TheShadowLayerIsMappedWithTheRealFrameSize`, in the conformance suite, is the one defect here that *is* visible to the naked eye and invisible to everything else: the game never tells the shadow shader how big the frame is, and the layer that hides unexplored terrain lands off the terrain with nothing in the log.
 
 ## Compatibility
 
@@ -88,7 +102,7 @@ Nothing here touches the simulation, so this mod cannot change what the world do
 
 **The TestHarness's own `OverlayTests.RaisingTheLimitRaisesTheGamesOwnClamp` fails while this mod is installed.** It asserts that an unpatched camera stops zooming in at exactly 1.5, and `preserveMaxZoom` moves that limit on purpose. `./run-tests.sh` runs only this mod's own tests, so it does not show up there; it appears under `--all`, where `--atomtest-exclude=RaisingTheLimit` or `preserveMaxZoom: false` gets it green.
 
-Built against Steam buildid **25276035** (`Atomcraft.dll` md5 `63e690c552b9252677ae5faa92549e1d`), and the test suite is run against a patched copy of that same build.
+Built against Steam buildid **25333425** (`Atomcraft.dll` md5 `24bae9b4d904deb16b573d3279a5d3e1`), and the test suite is run against a patched copy of that same build.
 
 ## What it patches
 
@@ -96,6 +110,7 @@ Built against Steam buildid **25276035** (`Atomcraft.dll` md5 `63e690c552b925267
 | --- | --- |
 | `Game._Ready` (postfix) | size the frame at startup, and subscribe to the window's `size_changed` signal |
 | `SaveData_Device.ApplySettings` (postfix) | the game's own "the player changed a setting" event |
+| `Gameplay.ResizeDisplayTextures` (postfix) | where the game rebinds the shadow material, so a frame size set on it cannot be left behind |
 | `FollowCam.RecalculateMinZoom` (postfix) | recompute the widest view, and the background's scale, for a frame that is not 1600x900 |
 | `FollowCam.CameraCellWidth` / `CameraCellHeight` (getters) | the cell counts the camera clamps its own position with, likewise |
 | `FollowCam.IncreaseZoom` (prefix and postfix) | move the zoom-in limit by biasing the target around the game's own clamp, rather than reimplementing it |
