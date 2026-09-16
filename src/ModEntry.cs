@@ -27,6 +27,12 @@ public static class ModEntry
         _harmony = new Harmony(ModId);
         _harmony.PatchAll(Assembly.GetExecutingAssembly());
 
+        if (!ShadowLayer.Bound)
+            Log.Warn("Gameplay no longer has a Shadowmap sprite, so the shadow and fog shader " +
+                     "cannot be told the size of the resized frame. Expect that layer to be " +
+                     "drawn off the terrain it belongs to, with nothing in the log. This " +
+                     "usually means the game updated; the mod needs one too.");
+
         if (!CameraFields.Complete)
             Log.Warn($"FollowCam no longer has {CameraFields.Missing}, so the camera's limits " +
                      "cannot be restated for the new render target. Expect the view to reach " +
@@ -51,6 +57,12 @@ public static class ModEntry
 /// value on every frame, which was simpler and always correct but meant the mod was never
 /// idle. The signal covers the same ground: the deferred fullscreen switch arrives as a resize
 /// like any other.</para>
+///
+/// <para>A fourth caller joins these three and changes no window: the postfix on
+/// <c>Gameplay.ResizeDisplayTextures</c> in <see cref="ShadowLayerRebindPatch"/>, which is
+/// where the game rebinds the shadow material. It comes here rather than calling
+/// <see cref="ShadowLayer.Sync"/> itself so that every path that touches the frame shares one
+/// fault latch and one switch.</para>
 /// </summary>
 [HarmonyPatch]
 internal static class WindowWatcher
@@ -134,6 +146,15 @@ internal static class WindowWatcher
             if (RenderTarget.SyncIfChanged())
                 ActualResolutionApi.RefreshCamera();
             UiLayout.Sync();
+
+            // Unconditionally, not only when the render target changed, because the two can
+            // go out of step without the window moving: the shadow sprite does not exist for
+            // the whole of Game._Ready, so an event early enough to find nothing to tell would
+            // otherwise never be followed up. Today's order puts Gameplay.Init before the
+            // ApplySettings that first sizes the frame, so this is insurance rather than a
+            // case that fires -- and it costs a comparison, because it does nothing at all
+            // when the shader already agrees.
+            ShadowLayer.Sync();
         }
         catch (Exception e)
         {

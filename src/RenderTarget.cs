@@ -84,6 +84,11 @@ public static class RenderTarget
         root.ContentScaleStretch = Window.ContentScaleStretchEnum.Integer;
         root.ContentScaleSize = content;
 
+        // The shadow and fog shader is told the frame size by a value baked into its
+        // material, and the game never assigns it. Mirroring it here, in the same breath as
+        // the assignment it has to follow, is what keeps the two from drifting apart.
+        ShadowLayer.Sync();
+
         _appliedWindow = window;
         _appliedDivisor = divisor;
 
@@ -107,6 +112,7 @@ public static class RenderTarget
         root.ContentScaleAspect = _originalAspect;
         root.ContentScaleStretch = _originalStretch;
         root.ContentScaleSize = _originalSize;
+        ShadowLayer.Sync();          // back to the size the baked value assumes
 
         _appliedWindow = Vector2I.Zero;
         _appliedDivisor = 0;

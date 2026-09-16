@@ -29,6 +29,7 @@ public static class RegistrationTests
         {
             (typeof(Game), "_Ready"),
             (typeof(SaveData_Device), "ApplySettings"),
+            (typeof(Gameplay), "ResizeDisplayTextures"),
             (typeof(FollowCam), "RecalculateMinZoom"),
             (typeof(FollowCam), "IncreaseZoom"),
         })
