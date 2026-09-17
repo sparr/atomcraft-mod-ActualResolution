@@ -3,7 +3,7 @@
   "name": "Actual Resolution",
   "description": "Renders the game at the window's own resolution instead of drawing a fixed 1600x900 frame and letting the engine rescale it, and rescales everything that was tuned to that frame to match.",
   "author": "sparr",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "modules": [
     {
       "moduleId": "ActualResolution/Main",
