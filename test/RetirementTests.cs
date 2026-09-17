@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection.Emit;
 using Atomcraft;
 using Atomcraft.TestHarness;
 using Godot;
@@ -56,6 +57,77 @@ public static class RetirementTests
                 "ratio between the two sizes.");
     }
 
+
+    /// <summary>
+    /// The game still adds the language screen's outline offset in the frame's coordinates
+    /// rather than the UI layout's.
+    ///
+    /// <para><c>FlagGrid.SetHighlightOnCurrentLocale</c> does</para>
+    /// <code>
+    /// FlagOutline.GlobalPosition = value.GlobalPosition + new Vector2(-60f, -48f);
+    /// </code>
+    /// <para>where the constant is a measurement of the 1600x900 layout and the position is in
+    /// the frame. Godot converts an assigned <c>GlobalPosition</c> back through the parent
+    /// chain, so a scale on an ancestor divides that constant and the outline sits
+    /// <c>(scale - 1) * (60, 48)</c> away from the flag. It is right in the shipped game only
+    /// because the UI is never scaled there.</para>
+    ///
+    /// <para><b>Read from the original IL,</b> which is where the claim lives: this is about
+    /// what the game's own code does, and the mod has a transpiler inside that very method.
+    /// Harmony redirects a patched method at runtime and leaves its body in metadata, so
+    /// <c>GetOriginalInstructions</c> answers for the game rather than for the mod. Measuring
+    /// the outline's position instead would just report the correction back to itself; that
+    /// assertion belongs in <see cref="FlagOutlineTests"/>, and it is the one that stays.</para>
+    ///
+    /// <para><b>When this fails:</b> the game has changed how it places that outline. If it
+    /// now scales the offset — through <c>GetGlobalTransform().BasisXform</c>, by working in
+    /// the outline's own parent space, or by anchoring the outline to the flag — then
+    /// <c>src/FlagOutline.cs</c> can go, along with <c>Geometry.LayoutDistance</c> and its test
+    /// in <see cref="GeometryTests"/>, <c>FlagOutlineCorrected</c> on the API, the startup
+    /// check in <c>ModEntry.Initialize</c>, <c>TheFlagOutlineCorrectionIsInstalled</c> in
+    /// <see cref="RegistrationTests"/>, and this test. Keep
+    /// <c>FlagOutlineTests.TheOutlineSitsOnAFlag</c>: it asks whether the outline is on the
+    /// flag, not who put it there. If the code merely moved, the mod needs an update rather
+    /// than a deletion, and the two are told apart by reading the method.</para>
+    /// </summary>
+    [GameTest]
+    public static void TheGameStillOffsetsTheFlagOutlineInFrameSpace()
+    {
+        var method = AccessTools.Method(typeof(FlagGrid), "SetHighlightOnCurrentLocale")
+                     ?? throw new AssertionException(
+                         "the game no longer has FlagGrid.SetHighlightOnCurrentLocale at all; " +
+                         "see this test's doc comment for what that decides");
+
+        var moveNext = AccessTools.AsyncMoveNext(method)
+                       ?? throw new AssertionException(
+                           "FlagGrid.SetHighlightOnCurrentLocale is no longer async, so the " +
+                           "assignment this asks about has been rewritten; see this test's doc " +
+                           "comment");
+
+        var ctor = AccessTools.Constructor(typeof(Vector2), new[] { typeof(float), typeof(float) });
+        var plus = AccessTools.Method(typeof(Vector2), "op_Addition",
+                                      new[] { typeof(Vector2), typeof(Vector2) });
+        if (ctor == null || plus == null)
+        {
+            Harness.Inapplicable("Godot's Vector2 no longer has the members this reads for");
+            return;
+        }
+
+        var il = PatchProcessor.GetOriginalInstructions(moveNext);
+        var found = false;
+        for (var i = 0; i + 3 < il.Count && !found; i++)
+            found = il[i].LoadsConstant(-60d)
+                    && il[i + 1].LoadsConstant(-48d)
+                    && il[i + 2].opcode == OpCodes.Newobj
+                    && Equals(il[i + 2].operand, ctor)
+                    && il[i + 3].Calls(plus);
+
+        if (!found)
+            throw new AssertionException(
+                "FlagGrid no longer builds an unscaled (-60, -48) and adds it to the selected " +
+                "flag's global position. Something about how the game places that outline has " +
+                "changed; see this test's doc comment for what to delete and what to update.");
+    }
 
     /// <summary>
     /// The game still never tells the shadow and fog shader how big the frame is.

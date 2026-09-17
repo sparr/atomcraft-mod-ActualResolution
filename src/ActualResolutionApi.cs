@@ -65,6 +65,16 @@ public static class ActualResolutionApi
     public static float UiScale => UiLayout.Scale;
 
     /// <summary>
+    /// Whether the language screen's selection outline is being placed against the frame the
+    /// UI is actually drawn at.
+    ///
+    /// <para>False means the game has moved the offset this corrects, so the outline is drawn
+    /// wherever <c>FlagGrid</c> puts it: still on the flag at a UI scale of 1, and off it by
+    /// <c>(scale - 1) * (60, 48)</c> otherwise. See <see cref="FlagOutlinePatch"/>.</para>
+    /// </summary>
+    public static bool FlagOutlineCorrected => FlagOutlinePatch.Applied;
+
+    /// <summary>
     /// Whether the finished frame reaches the window without being resampled: the engine's
     /// blit is by a whole number, the same on both axes, and not a reduction.
     ///

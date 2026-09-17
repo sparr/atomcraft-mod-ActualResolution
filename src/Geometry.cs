@@ -193,4 +193,23 @@ public static class Geometry
     /// </summary>
     public static float MaxZoomBias(Vector2 viewport, bool wholePixels = false) =>
         MaxZoom(viewport, wholePixels) - GameMaxZoom;
+
+    // ------------------------------------------------- UI layout distances
+
+    /// <summary>
+    /// A distance measured in the 1600x900 layout's own pixels, restated for the frame the UI
+    /// is actually drawn at.
+    ///
+    /// <para>The UI is scaled rather than laid out against the frame (see
+    /// <see cref="UiLayout"/>), so a distance inside it is still in layout pixels and needs
+    /// multiplying by that scale before it can be added to anything in the frame's
+    /// coordinates. The game has one place that adds such a distance to a global position
+    /// without doing this; see <see cref="FlagOutlinePatch"/>.</para>
+    ///
+    /// <para>An unusable scale returns the distance unchanged, which is the shipped
+    /// behaviour: this is arithmetic on a cosmetic offset, and guessing is worse than leaving
+    /// it as the game drew it.</para>
+    /// </summary>
+    public static Vector2 LayoutDistance(Vector2 layoutPixels, float uiScale) =>
+        float.IsFinite(uiScale) && uiScale > 0f ? layoutPixels * uiScale : layoutPixels;
 }

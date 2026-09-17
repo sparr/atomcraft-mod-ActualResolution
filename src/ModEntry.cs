@@ -39,6 +39,12 @@ public static class ModEntry
                      "past what the game renders. This usually means the game updated; the " +
                      "mod needs one too.");
 
+        if (!FlagOutlinePatch.Applied)
+            Log.Warn($"FlagGrid.{FlagOutlinePatch.Method} no longer offsets the language " +
+                     "screen's selection outline the way this mod corrects, so that outline " +
+                     "will be drawn wherever the game puts it. Cosmetic, one screen, and it " +
+                     "may well mean the game has fixed this itself; see src/FlagOutline.cs.");
+
         Log.Info($"initialized, {_harmony.GetPatchedMethods().Count()} method(s) patched");
     }
 }

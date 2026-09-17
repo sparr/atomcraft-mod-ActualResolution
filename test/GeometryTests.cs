@@ -50,6 +50,39 @@ public static class GeometryTests
     }
 
     /// <summary>
+    /// A distance measured inside the UI is restated for the frame the UI is drawn at, which
+    /// is the whole of what the mod inserts into <c>FlagGrid</c>.
+    ///
+    /// <para>The guard matters as much as the arithmetic: the caller is an <c>async void</c>
+    /// state machine in the game, so a NaN scale has to come back as the game's own offset
+    /// rather than as a NaN position or an exception.</para>
+    /// </summary>
+    [GameTest]
+    public static void ALayoutDistanceFollowsTheUiScale()
+    {
+        var offset = new Vector2(-60f, -48f);
+
+        foreach (var viewport in Widescreen)
+        {
+            var scale = Geometry.Ratio(viewport);
+            var got = Geometry.LayoutDistance(offset, scale);
+            if (!got.IsEqualApprox(offset * scale))
+                throw new AssertionException(
+                    $"at {viewport.X}x{viewport.Y} the UI is drawn at {scale}, so a {offset} in " +
+                    $"its layout is {offset * scale} in the frame, not {got}");
+        }
+
+        foreach (var scale in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+        {
+            var got = Geometry.LayoutDistance(offset, scale);
+            if (!got.IsEqualApprox(offset))
+                throw new AssertionException(
+                    $"a UI scale of {scale} turned the game's own {offset} into {got}; an " +
+                    "unusable scale has to leave the offset as the game drew it");
+        }
+    }
+
+    /// <summary>
     /// The zoom ceiling is scaled the same way, so the closest view is as close as it was
     /// before the mod: the magnification the engine's blit used to supply is handed back
     /// exactly.
