@@ -35,6 +35,7 @@ cp harness.conf.example harness.conf   # then edit it
 ./build.sh --release --install         # what a release is cut from
 ./run-tests.sh                         # the arithmetic, headless
 ./run-tests.sh --headful               # and the tests that judge what is on screen
+./run-tests.sh --no-build              # test what is installed; how a release is verified
 ./play.sh                              # a real game with only this mod loaded
 ./play.sh --verify                     # boot it headless and confirm it loaded
 ```
