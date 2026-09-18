@@ -193,4 +193,84 @@ public static class RetirementTests
 
         yield return Session.Leave();
     }
+
+    /// <summary>
+    /// The engine still takes a pixel of each edge of a fullscreen window's client area for a
+    /// border, so a fullscreen game renders at less than the screen's resolution.
+    ///
+    /// <para><b>The subject of this test is Godot, not Atomcraft.</b> Every other test in this
+    /// file asks whether the game's own code or configuration has changed. This one asks about
+    /// <c>DisplayServerWindows</c>: <c>WINDOW_MODE_FULLSCREEN</c> adds <c>WS_BORDER</c> to the
+    /// window and then moves its <i>outer</i> rect to the screen, so the border comes out of
+    /// the client area and a 1920x1080 screen renders into 1918x1078. So this one retires on a
+    /// Godot version bump rather than on anything the Atomcraft developer writes, and whoever
+    /// reads it red should look in the engine's changelog rather than in the game.</para>
+    ///
+    /// <para>It is already fixed upstream. Godot 4.5 dropped <c>WS_BORDER</c> and made the
+    /// window two pixels wider than the screen instead, clipping the spare strip out of the
+    /// mouse region; 4.6 chooses the axis by which edge has no adjacent monitor. Atomcraft
+    /// ships on 4.4, where the defect is live. So the assertion below accepts only a client
+    /// area <i>smaller</i> than the screen: equal is the 4.4 defect repaired, and larger is
+    /// the 4.5 fix, and either means this mod has nothing left to do.</para>
+    ///
+    /// <para><b>Measured rather than read from <c>Engine.GetVersionInfo</c>.</b> A version
+    /// comparison would go red at roughly the right moment and prove nothing about the
+    /// property, and it would miss a backport into a 4.4 point release.</para>
+    ///
+    /// <para><b>Switches the mod's own correction off while measuring.</b> With
+    /// <c>exactFullscreen</c> on and the game's device settings asking for fullscreen, the mod
+    /// would convert the window to mode 4 the moment this test entered fullscreen, and the
+    /// measurement would report the mod back to itself as an engine fix. Same hazard, and the
+    /// same answer, as <c>FlagOutlineTests.TheOutlineSitsOnAFlag</c> imposing a UI scale of its
+    /// own.</para>
+    ///
+    /// <para><b>When this fails:</b> the engine hands a fullscreen window the whole screen, so
+    /// <c>src/WindowFrame.cs</c> can go in its entirety, along with the <c>exactFullscreen</c>
+    /// key in <c>src/Settings.cs</c> (field, <c>Load</c>, <c>Describe</c>, <c>Reset</c> and the
+    /// comment in <c>Save</c>), the <c>WindowFrame.Bound</c> check in
+    /// <c>ModEntry.Initialize</c>, the <c>WindowFrame.Sync</c> call in <c>WindowWatcher.Sync</c>
+    /// and in the <c>ActualResolutionApi.Enabled</c> setter, and this test. Check
+    /// <c>Geometry</c> before deleting anything else: the 4.5 fix makes the fullscreen frame
+    /// two columns <i>wider</i> than the display, which is not 16:9, so the aspect handling and
+    /// the <c>integerLimits</c> rounding want re-reading against a frame that is deliberately
+    /// bigger than the screen it is shown on.</para>
+    /// </summary>
+    [GameTest(RequiresDisplay = true)]
+    public static IEnumerator TheEngineStillTakesTheFullscreenWindowsBorderFromItsClientArea()
+    {
+        var mode = DisplayServer.WindowGetMode();
+        var size = DisplayServer.WindowGetSize();
+        var correcting = Settings.ExactFullscreen;
+
+        Settings.ExactFullscreen = false;
+        DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+        yield return Wait.Frames(2);
+
+        var reached = DisplayServer.WindowGetMode();
+        var client = DisplayServer.WindowGetSize();
+        var screen = DisplayServer.ScreenGetSize(DisplayServer.WindowGetCurrentScreen());
+
+        // Restore before anything can throw, so a failure here costs one test rather than
+        // every test after it, and so the window the rest of the run measures is the one it
+        // started with. The mod's own resize signal brings the render target back with it.
+        DisplayServer.WindowSetMode(mode);
+        if (mode == DisplayServer.WindowMode.Windowed)
+            DisplayServer.WindowSetSize(size);
+        Settings.ExactFullscreen = correcting;
+        yield return Wait.Frames(2);
+
+        // Not the same question as the one being asked. Without this a window that never went
+        // fullscreen would report its smaller windowed size and pass for the wrong reason,
+        // which is the one way this test could go quietly green while saying nothing.
+        if (reached != DisplayServer.WindowMode.Fullscreen)
+            Harness.Inapplicable(
+                $"asked for fullscreen and got {reached}, so there is no fullscreen client " +
+                "area to measure on this display");
+
+        if (client.X >= screen.X && client.Y >= screen.Y)
+            throw new AssertionException(
+                $"a fullscreen window on a {screen.X}x{screen.Y} screen now has a " +
+                $"{client.X}x{client.Y} client area, so the engine no longer spends the " +
+                "border on it. See this test's doc comment for what can be deleted.");
+    }
 }

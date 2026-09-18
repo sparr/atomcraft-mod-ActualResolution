@@ -213,6 +213,110 @@ public static class ScreenTests
     }
 
     /// <summary>
+    /// With <c>exactFullscreen</c> on, a fullscreen window renders at the screen's own
+    /// resolution rather than two pixels short of it.
+    ///
+    /// <para><b>This is the one test that proves the setting is wired to anything.</b> It does
+    /// not call the correction. It asks for fullscreen the way the display settings page does,
+    /// by setting <c>DeviceSettings.Fullscreen</c> and calling <c>ApplySettings</c>, and then
+    /// checks the mod noticed, so what it exercises is the postfix on <c>ApplySettings</c>,
+    /// <c>WindowWatcher</c> and <c>WindowFrame</c> together. Driving <c>WindowFrame</c>
+    /// directly would pass with every one of those deleted.</para>
+    ///
+    /// <para><b>Not <c>DisplayServer.WindowSetMode</c>,</b> which was the first thing tried and
+    /// which this mod does not notice at all. <c>size_changed</c> is a <i>viewport</i> signal,
+    /// and the mod pins the viewport with <c>ContentScaleSize</c>, so a window that resizes
+    /// under a pinned render target changes nothing the signal watches and it stays silent.
+    /// That is a real hole and it is not this test's subject; see the note on
+    /// <c>WindowWatcher</c>.</para>
+    ///
+    /// <para><b>Two assertions, and the order matters.</b> The measurement is the claim: the
+    /// client area covers the screen. <see cref="ActualResolutionApi.ExactFullscreenApplied"/>
+    /// is checked as well, and only afterwards, so that a screen where fullscreen happens to
+    /// be exact for some other reason cannot pass this off as the mod working. Without it the
+    /// test would be measuring the display rather than the code.</para>
+    ///
+    /// <para><b>Needs the game's own setting, not just the mod's.</b>
+    /// <c>WindowFrame.Wanted</c> is the conjunction of <c>exactFullscreen</c>, the mod being
+    /// enabled, and <c>DeviceSettings.Fullscreen</c>, because a mod has no business overriding
+    /// a window the player asked to be a window. So the test has to say both.</para>
+    ///
+    /// <para><b>Restores before it asserts,</b> and deliberately does not lean on the state
+    /// registry to do it. <c>ActualResolutionApi.ResetState</c> pulls the window out of the
+    /// exclusive mode, because the reset re-syncs and the correction is then unwanted, but
+    /// nothing in it remembers the size the harness was running at. A throw between the switch
+    /// and the restore would leave every later test measuring a fullscreen window.</para>
+    ///
+    /// <para>The fullscreen round trip here is shaped like the one in
+    /// <c>RetirementTests.TheEngineStillTakesTheFullscreenWindowsBorderFromItsClientArea</c>,
+    /// and is kept separate rather than shared: that one switches the correction <i>off</i> to
+    /// measure the engine, this one switches it on to measure the mod, and a helper serving
+    /// both would join the two questions the retirement split exists to keep apart.</para>
+    /// </summary>
+    [GameTest(RequiresDisplay = true)]
+    public static IEnumerator TheFullscreenFrameIsTheWholeScreen()
+    {
+        // Not a pattern binding: Harness.Inapplicable throws but is not annotated as doing
+        // so, so the compiler cannot see a pattern-bound local as assigned afterwards.
+        var device = Game.DeviceSettings;
+        if (device == null)
+            Harness.Inapplicable("the game has no device settings to ask for fullscreen with");
+
+        var mode = DisplayServer.WindowGetMode();
+        var size = DisplayServer.WindowGetSize();
+        var wasFullscreen = device!.Fullscreen;
+        var wasExact = Settings.ExactFullscreen;
+
+        Settings.ExactFullscreen = true;
+        device.Fullscreen = true;
+        device.ApplySettings();
+        yield return Wait.Frames(3);
+
+        var reached = DisplayServer.WindowGetMode();
+        var client = DisplayServer.WindowGetSize();
+        var screen = DisplayServer.ScreenGetSize(DisplayServer.WindowGetCurrentScreen());
+        var applied = ActualResolutionApi.ExactFullscreenApplied;
+        var unresampled = ActualResolutionApi.IsUnresampled;
+
+        // Before anything can throw, and in this order: the correction has to become unwanted
+        // before the window is asked to go back, or the mod would put it straight into the
+        // exclusive mode again on the resize this causes.
+        Settings.ExactFullscreen = false;
+        device.Fullscreen = wasFullscreen;
+        DisplayServer.WindowSetMode(mode);
+        if (mode == DisplayServer.WindowMode.Windowed)
+            DisplayServer.WindowSetSize(size);
+        // Explicitly, not by waiting: the mod does not see a window resize on its own, which
+        // is the hole noted above. Without this the render target would stay the size of the
+        // fullscreen frame for every test after this one.
+        ActualResolutionApi.ResetState();
+        yield return Wait.Frames(3);
+        Settings.ExactFullscreen = wasExact;
+
+        if (reached == DisplayServer.WindowMode.Windowed)
+            Harness.Inapplicable(
+                "the window would not go fullscreen on this display, so there is no " +
+                "fullscreen frame to measure");
+
+        if (client != screen)
+            throw new AssertionException(
+                $"a fullscreen window on a {screen.X}x{screen.Y} screen renders into " +
+                $"{client.X}x{client.Y}, so it is still short of the screen. " +
+                ActualResolutionApi.DescribeState());
+
+        if (!applied)
+            throw new AssertionException(
+                $"the frame is the screen's {screen.X}x{screen.Y}, but the mod does not claim " +
+                "to have done it, so this passed for a reason other than the correction. " +
+                ActualResolutionApi.DescribeState());
+
+        if (!unresampled)
+            throw new AssertionException(
+                "the fullscreen frame covers the screen but is still resampled on its way " +
+                $"there. {ActualResolutionApi.DescribeState()}");
+    }
+
+    /// <summary>
     /// A window resized by something other than the game keeps the frame with it.
     ///
     /// <para>The case is a player dragging a window edge, a tiling window manager, or a

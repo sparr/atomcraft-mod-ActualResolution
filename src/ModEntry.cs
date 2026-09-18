@@ -39,6 +39,13 @@ public static class ModEntry
                      "past what the game renders. This usually means the game updated; the " +
                      "mod needs one too.");
 
+        if (!WindowFrame.Installed)
+            Log.Warn("the game no longer sets the window mode where this mod substitutes its " +
+                     "own, so exactFullscreen is delivered by correcting the mode after the " +
+                     "game sets it rather than by asking for the right one. That still works " +
+                     "and costs an extra window-mode change per settings change. This usually " +
+                     "means the game updated; see src/WindowFrame.cs.");
+
         if (!FlagOutlinePatch.Applied)
             Log.Warn($"FlagGrid.{FlagOutlinePatch.Method} no longer offsets the language " +
                      "screen's selection outline the way this mod corrects, so that outline " +
@@ -170,11 +177,20 @@ internal static class WindowWatcher
     /// </summary>
     internal static void Sync()
     {
-        if (Faulted || !ActualResolutionApi.Enabled)
+        if (Faulted)
             return;
 
         try
         {
+            // Before the render target, because this is what decides how big the window is,
+            // and the render target is sized from the window. Outside the Enabled guard
+            // because switching the mod off has to hand the window back, not merely stop
+            // taking it.
+            WindowFrame.Sync();
+
+            if (!ActualResolutionApi.Enabled)
+                return;
+
             if (RenderTarget.SyncIfChanged())
                 ActualResolutionApi.RefreshCamera();
             UiLayout.Sync();

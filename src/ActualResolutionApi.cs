@@ -42,6 +42,9 @@ public static class ActualResolutionApi
                 RenderTarget.Restore();
                 UiLayout.Restore();
             }
+            // After either branch: the window it asks for depends on the value just set, and
+            // switching the mod off has to give the window back as well as the render target.
+            WindowFrame.Sync();
             RefreshCamera();
             Log.Info(value ? "enabled" : "disabled");
         }
@@ -73,6 +76,30 @@ public static class ActualResolutionApi
     /// <c>(scale - 1) * (60, 48)</c> otherwise. See <see cref="FlagOutlinePatch"/>.</para>
     /// </summary>
     public static bool FlagOutlineCorrected => FlagOutlinePatch.Applied;
+
+    /// <summary>
+    /// Whether the fullscreen correction is in effect right now: the window is fullscreen
+    /// without the border Godot otherwise takes out of its client area, so the frame is the
+    /// screen's own resolution. See <see cref="WindowFrame"/>.
+    ///
+    /// <para>False whenever the player is not asking for fullscreen, or <c>exactFullscreen</c>
+    /// is off, both of which are the ordinary case: the default is off, because the border is
+    /// what lets other windows draw over the game.</para>
+    /// </summary>
+    public static bool ExactFullscreenApplied => WindowFrame.Applied;
+
+    /// <summary>
+    /// Whether the fullscreen mode the game asks for is being substituted at both of its call
+    /// sites, rather than corrected after the fact.
+    ///
+    /// <para>False is not a broken mod: <see cref="WindowFrame.Sync"/> still brings a
+    /// fullscreen window to the mode the setting asks for, so the behavior survives a game
+    /// update that moves those calls. It costs an extra window-mode change, and it means the
+    /// substitution wants re-reading. Asserted by
+    /// <c>RegistrationTests.TheFullscreenModeSubstitutionIsInstalled</c>, because a behavior
+    /// test cannot see the difference.</para>
+    /// </summary>
+    public static bool FullscreenModeSubstituted => WindowFrame.Installed;
 
     /// <summary>
     /// Whether the finished frame reaches the window without being resampled: the engine's

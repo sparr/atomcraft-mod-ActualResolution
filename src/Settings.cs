@@ -71,6 +71,18 @@ public static class Settings
     /// </summary>
     public static float UiScale;
 
+    /// <summary>
+    /// Whether fullscreen renders at the screen's exact resolution. Godot's non-exclusive
+    /// fullscreen spends a pixel of each edge on a window border, so a 1920x1080 screen
+    /// otherwise renders into 1918x1078.
+    ///
+    /// <para>Off by default, because it is not free: the border is what lets other windows
+    /// draw on top of the game, and a player who wants an overlay more than two pixels should
+    /// keep it. Nothing else is given up -- see <see cref="WindowFrame"/>, in particular why
+    /// "exclusive fullscreen" costs nothing on this backend.</para>
+    /// </summary>
+    public static bool ExactFullscreen;
+
     /// <summary>Whether <see cref="Load"/> has run, so it does not run twice.</summary>
     private static bool _loaded;
 
@@ -115,6 +127,7 @@ public static class Settings
             PreserveMaxZoom = Bool(settings, "preserveMaxZoom", PreserveMaxZoom);
             IntegerLimits = Bool(settings, "integerLimits", IntegerLimits);
             UiScale = MathF.Max(0f, Float(settings, "uiScale", UiScale));
+            ExactFullscreen = Bool(settings, "exactFullscreen", ExactFullscreen);
 
             Log.Info($"settings: {Describe()}");
         }
@@ -132,7 +145,8 @@ public static class Settings
         $"enabled={Enabled} " +
         $"renderDivisor={(RenderDivisor == 0 ? "auto" : RenderDivisor.ToString())} " +
         $"preserveMaxZoom={PreserveMaxZoom} integerLimits={IntegerLimits} " +
-        $"uiScale={(UiScale == 0f ? "auto" : UiScale.ToString(System.Globalization.CultureInfo.InvariantCulture))}";
+        $"uiScale={(UiScale == 0f ? "auto" : UiScale.ToString(System.Globalization.CultureInfo.InvariantCulture))} " +
+        $"exactFullscreen={ExactFullscreen}";
 
     /// <summary>
     /// Restores every setting to its default, without touching the file. Used between tests,
@@ -149,6 +163,7 @@ public static class Settings
         PreserveMaxZoom = true;
         IntegerLimits = true;
         UiScale = 0f;
+        ExactFullscreen = false;
     }
 
     /// <summary>Writes the current values, which on a first run are the defaults.</summary>
@@ -176,7 +191,9 @@ public static class Settings
             "    \"_integerLimits\": \"true puts the widest and closest views on a whole number of pixels per cell. Those are the two zooms the game comes to rest on.\",\n" +
             $"    \"integerLimits\": {(IntegerLimits ? "true" : "false")},\n" +
             "    \"_uiScale\": \"What the game's fixed 1600x900 UI layout is scaled by. 0 keeps it the size the game shipped. 1 draws it sharp at the screen's own resolution, which is smaller.\",\n" +
-            $"    \"uiScale\": {UiScale.ToString(invariant)}\n" +
+            $"    \"uiScale\": {UiScale.ToString(invariant)},\n" +
+            "    \"_exactFullscreen\": \"true renders fullscreen at the screen's exact resolution. Godot's fullscreen spends a pixel of each edge on a window border, so 1920x1080 otherwise renders into 1918x1078. The cost is that other windows can no longer draw on top of the game.\",\n" +
+            $"    \"exactFullscreen\": {(ExactFullscreen ? "true" : "false")}\n" +
             "}\n");
         Log.Info($"wrote default settings to {Path}");
     }

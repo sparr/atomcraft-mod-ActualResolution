@@ -47,6 +47,35 @@ public static class RegistrationTests
     }
 
     /// <summary>
+    /// The fullscreen mode substitution reached both of the game's calls.
+    ///
+    /// <para><b>A behavior test cannot make this claim.</b>
+    /// <c>ScreenTests.TheFullscreenFrameIsTheWholeScreen</c> passes whether the mode is
+    /// substituted where the game asks for it or corrected afterwards by
+    /// <c>WindowFrame.Sync</c>, because both deliver the same window. Confirmed by deleting the
+    /// substitution and watching that test stay green. So the wiring needs its own assertion,
+    /// which is what registration tests are for.</para>
+    ///
+    /// <para><b>Both calls, not either.</b> One of two is the dangerous outcome: the setting
+    /// would be asked for at startup and corrected afterwards from the settings page, or the
+    /// reverse, and the difference between those is one extra window-mode change in a place
+    /// nobody is looking.</para>
+    ///
+    /// <para><b>When this fails:</b> the game moved or removed one of its
+    /// <c>DisplayServer.WindowSetMode</c> calls. The mod still works, so this is an update
+    /// rather than an emergency; <c>src/WindowFrame.cs</c> names the two call sites.</para>
+    /// </summary>
+    [GameTest]
+    public static void TheFullscreenModeSubstitutionIsInstalled()
+    {
+        if (!ActualResolutionApi.FullscreenModeSubstituted)
+            throw new AssertionException(
+                "the fullscreen mode substitution is not woven into both of the game's " +
+                "DisplayServer.WindowSetMode calls, so exactFullscreen is being delivered by " +
+                "correcting the mode after the fact. See this test's doc comment.");
+    }
+
+    /// <summary>
     /// The language screen's outline correction is installed, which is two claims rather than
     /// one: Harmony bound the state machine hiding behind a private <c>async void</c> method,
     /// and the transpiler found the offset it edits. A game update can break either alone.

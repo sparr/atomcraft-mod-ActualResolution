@@ -14,6 +14,7 @@ What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 | UI | 1600x900 layout, rescaled with the frame | same layout, scaled by the same factor the blit used to apply |
 | Shadow and fog | mapped with a 1600x900 baked into its shader | mapped with the frame the game is actually drawing |
 | Language screen | the selection outline drifts off the flag once the UI is scaled | the outline stays on the flag |
+| Fullscreen | two pixels short of the screen, behind a 1px border | the screen's own resolution, if you ask for it (`exactFullscreen`, off by default) |
 | Widest view | ~265 cells across | ~265 cells across |
 | Zoom-in limit | 1.5, whatever the window | scaled with the frame, so the closest view looks the same |
 | Zoom feel | smooth and continuous | unchanged |
@@ -29,6 +30,7 @@ Written to `ActualResolution.json` in the game's user data directory the first t
 | `preserveMaxZoom` | `true` | Scales the zoom-in limit with the frame so the closest view keeps the size it has in the shipped game |
 | `integerLimits` | `true` | Puts the widest and the closest view on a whole number of pixels per cell |
 | `uiScale` | `0` | What the game's fixed 1600x900 UI layout is scaled by. `0` reproduces what the engine's blit was doing. `1` draws it at the frame's own resolution: sharp, and smaller |
+| `exactFullscreen` | `false` | `true` renders fullscreen at the screen's exact resolution. Godot's fullscreen spends a pixel of each edge on a window border, so 1920x1080 otherwise renders into 1918x1078. Off by default because that border is what lets other windows draw over the game; see [Compatibility](#compatibility) |
 
 ## Building and running
 
@@ -85,6 +87,8 @@ The tests are a peer mod, not a module of this one: the loader treats a missing 
 
 `TheGameStillOffsetsTheFlagOutlineInFrameSpace` reads the original IL of the state machine this mod transpiles, because the claim is about the game's own code and the mod has a patch inside that very method. Harmony leaves a patched method's body in metadata, so that reading answers for the game rather than for the mod.
 
+`TheEngineStillTakesTheFullscreenWindowsBorderFromItsClientArea` is the odd one out: its subject is **Godot**, not Atomcraft, so it retires on an engine upgrade rather than on anything the game's developer writes, and whoever reads it red should look in Godot's changelog. It is already fixed upstream in Godot 4.5, which drops the border and makes the window two pixels wider than the screen instead; Atomcraft ships on 4.4. Note that the 4.5 fix makes a fullscreen frame two columns *wider* than the display, which is not 16:9, so `Geometry` wants re-reading on the day this goes red.
+
 ### The conformance suite
 
 [`conformance/`](conformance/) is a peer mod that **names no mod** and depends only on the harness, so it can be installed alongside this mod, alongside a rival, or alongside none. It asks two things.
@@ -95,18 +99,21 @@ The tests are a peer mod, not a module of this one: the loader treats a missing 
 
 ## Tests
 
-Seventeen run headless, so a game update that moves the camera's constants fails the ordinary suite. Five need a display. Three more are the retirement suite, which the default run leaves out.
+Eighteen run headless, so a game update that moves the camera's constants fails the ordinary suite. Six need a display. Four more are the retirement suite, which the default run leaves out.
 
 - `TheFrameReachesTheWindowUnresampled` measures the blit rather than looking at it, because a viewport readback samples the render target *before* the engine scales it to the window: a frame about to be resampled reads back perfect. Nothing inside the game can photograph this defect, which is why it went unnoticed.
 - `TheUiIsScaledTheWayTheEngineUsedTo` and `TheGameFillsTheFrameItIsGiven` cover the half of the job that is not the world. The second also writes the frame out as an artifact, because "the UI is laid out sensibly" is not a thing a test can assert and is a thing somebody should look at after a game update.
 - `TheWidestViewShowsTheSameWorldAtEveryResolution` is the invariant that makes resizing the frame safe at all.
 - `TheFrameFollowsAWindowResize` resizes the window directly, which is the point: every other route into the mod goes through a method it patches, so any of them would pass with the per-frame window check deleted. This is the only route that does not, and it is the test that found the mod was not watching the window at all up to 0.1.2.
+- `TheFullscreenFrameIsTheWholeScreen` asks for fullscreen the way the display settings page does, then checks the mod noticed, so it covers the whole chain rather than the correction on its own. It cannot tell whether the mode was substituted where the game asks for it or corrected afterwards, because both deliver the same window; that distinction is `RegistrationTests.TheFullscreenModeSubstitutionIsInstalled`, and the two are worth having separately.
 - `TheOutlineSitsOnAFlag` imposes a UI scale of its own rather than using the run's. The harness runs in a window the size of the design frame, where the mod scales the UI by exactly 1 and the defect it covers cannot appear, so without that the test would pass with the correction deleted.
 - `TheShadowLayerIsMappedWithTheRealFrameSize`, in the conformance suite, is the one defect here that *is* visible to the naked eye and invisible to everything else: the game never tells the shadow shader how big the frame is, and the layer that hides unexplored terrain lands off the terrain with nothing in the log.
 
 ## Compatibility
 
 Nothing here touches the simulation, so this mod cannot change what the world does or desync a multiplayer session.
+
+**`exactFullscreen` trades one thing away, and that is why it is off by default.** It asks Godot for exclusive fullscreen, which on Windows is the same window minus the 1px border: the engine never changes the display mode, so there is no resolution switch and no alt-tab penalty to pay. What it does cost is the thing the border buys, which is other applications' windows and notifications being able to draw over the game. The Steam and Discord overlays are unaffected, because they hook the graphics API and draw inside the game's own frame rather than as windows. Under Proton it costs nothing at all: Wine decides fullscreen from the window's geometry and never looks at its style, and both modes give the window the same rectangle.
 
 **The TestHarness's own `OverlayTests.RaisingTheLimitRaisesTheGamesOwnClamp` fails while this mod is installed.** It asserts that an unpatched camera stops zooming in at exactly 1.5, and `preserveMaxZoom` moves that limit on purpose. `./run-tests.sh` runs only this mod's own tests, so it does not show up there; it appears under `--all`, where `--atomtest-exclude=RaisingTheLimit` or `preserveMaxZoom: false` gets it green.
 
@@ -119,13 +126,17 @@ Built against Steam buildid **25333425** (`Atomcraft.dll` md5 `24bae9b4d904deb16
 | `Game._Ready` (postfix) | size the frame at startup |
 | `Game._Process` (postfix) | notice a window resized by the window manager, which the game is never told about. One `WindowGetSize` and a compare; it calls nothing else unless the window actually moved |
 | `SaveData_Device.ApplySettings` (postfix) | the game's own "the player changed a setting" event |
+| `Game.SetWindowMode` (postfix) | the deferred fullscreen switch a frame after `_Ready`, so the frame is sized without waiting for the next per-frame check |
+| `SaveData_Device.ApplySettings` and `Game.SetWindowMode` (transpiler) | the two places the game asks for a window mode, where `exactFullscreen` substitutes Godot's exclusive fullscreen for its bordered one |
 | `Gameplay.ResizeDisplayTextures` (postfix) | where the game rebinds the shadow material, so a frame size set on it cannot be left behind |
 | `FollowCam.RecalculateMinZoom` (postfix) | recompute the widest view, and the background's scale, for a frame that is not 1600x900 |
 | `FollowCam.CameraCellWidth` / `CameraCellHeight` (getters) | the cell counts the camera clamps its own position with, likewise |
 | `FollowCam.IncreaseZoom` (prefix and postfix) | move the zoom-in limit by biasing the target around the game's own clamp, rather than reimplementing it |
 | `FlagGrid.SetHighlightOnCurrentLocale` (transpiler) | the language screen measures its selection outline's offset in the 1600x900 layout and adds it to a position in the frame, which are the same pixels only while the UI is not scaled |
 
-Nothing is replaced. Every patch but one is a prefix or postfix around the game's own arithmetic, so a retune of the zoom speed or the camera constants is inherited rather than overwritten. The exception is one instruction inserted into `FlagGrid`, between the game building that offset and the game adding it; see [`src/FlagOutline.cs`](src/FlagOutline.cs) for why there is no boundary to postfix there.
+Nothing is replaced. Every patch here is a prefix or postfix around the game's own arithmetic, so a retune of the zoom speed or the camera constants is inherited rather than overwritten, with two exceptions, both transpilers and both as small as a transpiler gets.
+
+`FlagGrid` gets a single instruction inserted between the game building its offset and the game adding it; see [`src/FlagOutline.cs`](src/FlagOutline.cs) for why there is no boundary to postfix there. The two window-mode calls get a single operand swapped, so `WindowSetMode` becomes one with the same signature that passes every mode through untouched except the one being corrected; see [`src/WindowFrame.cs`](src/WindowFrame.cs) for why asking for the right mode beats correcting the wrong one afterwards.
 
 ## License
 
