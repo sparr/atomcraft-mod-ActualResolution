@@ -3,7 +3,7 @@
   "name": "Frame Conformance",
   "description": "Checks a property of Atomcraft that a mod may depend on. Names no mod: install it alongside any mod, several, or none. Install only when running the test harness.",
   "author": "sparr",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "modules": [
     {
       "moduleId": "ActualResolutionConformance/Main",

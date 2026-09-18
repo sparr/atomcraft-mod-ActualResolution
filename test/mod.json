@@ -3,7 +3,7 @@
   "name": "Actual Resolution Tests",
   "description": "Tests for the Actual Resolution mod. Install only when running the test harness.",
   "author": "sparr",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "modules": [
     {
       "moduleId": "ActualResolution.Test/Main",
