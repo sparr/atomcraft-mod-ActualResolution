@@ -95,11 +95,12 @@ The tests are a peer mod, not a module of this one: the loader treats a missing 
 
 ## Tests
 
-Seventeen run headless, so a game update that moves the camera's constants fails the ordinary suite. Four need a display. Three more are the retirement suite, which the default run leaves out.
+Seventeen run headless, so a game update that moves the camera's constants fails the ordinary suite. Five need a display. Three more are the retirement suite, which the default run leaves out.
 
 - `TheFrameReachesTheWindowUnresampled` measures the blit rather than looking at it, because a viewport readback samples the render target *before* the engine scales it to the window: a frame about to be resampled reads back perfect. Nothing inside the game can photograph this defect, which is why it went unnoticed.
 - `TheUiIsScaledTheWayTheEngineUsedTo` and `TheGameFillsTheFrameItIsGiven` cover the half of the job that is not the world. The second also writes the frame out as an artifact, because "the UI is laid out sensibly" is not a thing a test can assert and is a thing somebody should look at after a game update.
 - `TheWidestViewShowsTheSameWorldAtEveryResolution` is the invariant that makes resizing the frame safe at all.
+- `TheFrameFollowsAWindowResize` resizes the window directly, which is the point: every other route into the mod goes through a method it patches, so any of them would pass with the per-frame window check deleted. This is the only route that does not, and it is the test that found the mod was not watching the window at all up to 0.1.2.
 - `TheOutlineSitsOnAFlag` imposes a UI scale of its own rather than using the run's. The harness runs in a window the size of the design frame, where the mod scales the UI by exactly 1 and the defect it covers cannot appear, so without that the test would pass with the correction deleted.
 - `TheShadowLayerIsMappedWithTheRealFrameSize`, in the conformance suite, is the one defect here that *is* visible to the naked eye and invisible to everything else: the game never tells the shadow shader how big the frame is, and the layer that hides unexplored terrain lands off the terrain with nothing in the log.
 
@@ -115,7 +116,8 @@ Built against Steam buildid **25333425** (`Atomcraft.dll` md5 `24bae9b4d904deb16
 
 | Target | Why |
 | --- | --- |
-| `Game._Ready` (postfix) | size the frame at startup, and subscribe to the window's `size_changed` signal |
+| `Game._Ready` (postfix) | size the frame at startup |
+| `Game._Process` (postfix) | notice a window resized by the window manager, which the game is never told about. One `WindowGetSize` and a compare; it calls nothing else unless the window actually moved |
 | `SaveData_Device.ApplySettings` (postfix) | the game's own "the player changed a setting" event |
 | `Gameplay.ResizeDisplayTextures` (postfix) | where the game rebinds the shadow material, so a frame size set on it cannot be left behind |
 | `FollowCam.RecalculateMinZoom` (postfix) | recompute the widest view, and the background's scale, for a frame that is not 1600x900 |

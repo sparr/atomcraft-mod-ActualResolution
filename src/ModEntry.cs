@@ -56,13 +56,26 @@ public static class ModEntry
 /// from the saved device settings and then defers a mode switch to the next frame,
 /// <c>SaveData_Device.ApplySettings</c> re-applies both whenever the player changes anything,
 /// and the window manager can resize it from outside the game entirely. The first two are
-/// methods worth a postfix. The third is what Godot's own <c>size_changed</c> signal is for,
-/// and subscribing to it costs nothing until it fires.</para>
+/// methods worth a postfix. The third is what the per-frame check in
+/// <see cref="AfterProcess"/> is for.</para>
 ///
-/// <para>An earlier version compared <c>DisplayServer.WindowGetSize()</c> against the last
-/// value on every frame, which was simpler and always correct but meant the mod was never
-/// idle. The signal covers the same ground: the deferred fullscreen switch arrives as a resize
-/// like any other.</para>
+/// <para><b>That check was once a subscription to Godot's <c>size_changed</c> signal, and that
+/// was a bug.</b> <c>size_changed</c> belongs to <c>Viewport</c>, not to the window: it is
+/// emitted from <c>Viewport::_set_size</c>, which returns early when the viewport's size is
+/// unchanged. This mod pins the viewport to <c>ContentScaleSize</c>, so a window that resizes
+/// under a pinned render target changes nothing the signal watches, and the signal stays
+/// silent. It fired exactly once, at startup, on the way from 1600x900 to the window's size,
+/// and then never again. A window resized by the window manager, by dragging an edge, or by a
+/// monitor change went unnoticed until the player next opened the settings page. Shipped that
+/// way in 0.1.2, and found by
+/// <c>ScreenTests.TheFrameFollowsAWindowResize</c>.</para>
+///
+/// <para>So the per-frame comparison of <c>DisplayServer.WindowGetSize()</c> is back, which is
+/// what the mod did before the signal replaced it. It is one <c>GetClientRect</c> and a
+/// <c>Vector2I</c> compare, it allocates nothing, and it calls <see cref="Sync"/> only when
+/// the window has actually moved, so the mod is still idle whenever nothing is happening. The
+/// honest version of "never idle" is that this costs a syscall a frame; the signal cost
+/// nothing and did nothing.</para>
 ///
 /// <para>A fourth caller joins these three and changes no window: the postfix on
 /// <c>Gameplay.ResizeDisplayTextures</c> in <see cref="ShadowLayerRebindPatch"/>, which is
@@ -85,27 +98,59 @@ internal static class WindowWatcher
     /// <summary>What went wrong, kept so a test can assert on it rather than grep the log.</summary>
     internal static Exception? Fault { get; private set; }
 
-    /// <summary>Whether the resize signal has been subscribed to, so it is not subscribed twice.</summary>
-    private static bool _subscribed;
+    /// <summary>The window size the last per-frame check saw, so the check is a comparison.</summary>
+    private static Vector2I _lastWindow;
 
     /// <summary>
     /// Unlatches the fault, so a session that recovers is not disabled for the rest of the run.
     ///
-    /// <para>Deliberately does not touch <see cref="_subscribed"/>: the signal connection
-    /// outlives any test and re-subscribing would attach a second handler to the same
-    /// signal.</para>
+    /// <para><b>Seeds the last window size rather than clearing it.</b> Clearing it makes the
+    /// next frame's check see a change that has not happened and call <see cref="Sync"/> once
+    /// per test, which is not merely wasteful: it re-applies the mod's own UI scale, so a test
+    /// that imposes a scale of its own and then waits has it taken away underneath.
+    /// <c>FlagOutlineTests.TheOutlineSitsOnAFlag</c> is that test, and it caught this. Nothing
+    /// is lost by seeding, because <c>ActualResolutionApi.ResetState</c> calls <c>Sync</c>
+    /// itself immediately afterwards.</para>
     /// </summary>
     internal static void Reset()
     {
         Faulted = false;
         Fault = null;
+        _lastWindow = DisplayServer.WindowGetSize();
     }
 
     [HarmonyPostfix]
     [HarmonyPatch(typeof(Game), "_Ready")]
-    internal static void AfterReady(Game __instance)
+    internal static void AfterReady()
     {
-        Subscribe(__instance);
+        Sync();
+    }
+
+    /// <summary>
+    /// The window manager's half of the job: notice a window that changed size without the
+    /// game being told, and bring the frame with it.
+    ///
+    /// <para>Deliberately cheap enough to run unconditionally. The comparison is what keeps
+    /// the mod idle, and it comes before <see cref="Sync"/> rather than inside it, because
+    /// <c>Sync</c> is three comparisons across three subsystems and this is one.</para>
+    ///
+    /// <para><b>The fault latch is what makes a per-frame hook safe here.</b> Godot logs an
+    /// exception out of <c>_Process</c> on every frame with no backpressure, and one throwing
+    /// hook is worth a million lines of <c>godot.log</c> in ninety seconds. <c>Sync</c> catches,
+    /// latches, and reports once; this returns early forever after.</para>
+    /// </summary>
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(Game), nameof(Game._Process))]
+    internal static void AfterProcess()
+    {
+        if (Faulted)
+            return;
+
+        var window = DisplayServer.WindowGetSize();
+        if (window == _lastWindow)
+            return;
+
+        _lastWindow = window;
         Sync();
     }
 
@@ -117,25 +162,6 @@ internal static class WindowWatcher
     [HarmonyPostfix]
     [HarmonyPatch(typeof(SaveData_Device), nameof(SaveData_Device.ApplySettings))]
     internal static void AfterApplySettings() => Sync();
-
-    private static void Subscribe(Node game)
-    {
-        if (_subscribed)
-            return;
-        try
-        {
-            var root = game.GetTree()?.Root;
-            if (root == null)
-                return;
-            root.SizeChanged += Sync;
-            _subscribed = true;
-        }
-        catch (Exception e)
-        {
-            Log.Warn($"could not subscribe to the window's resize signal: {e.Message}. The " +
-                     "render target will still be sized at startup and on a settings change.");
-        }
-    }
 
     /// <summary>
     /// Brings the render target, the camera's limits and the UI's scale into line with the

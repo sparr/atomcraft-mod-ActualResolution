@@ -213,6 +213,80 @@ public static class ScreenTests
     }
 
     /// <summary>
+    /// A window resized by something other than the game keeps the frame with it.
+    ///
+    /// <para>The case is a player dragging a window edge, a tiling window manager, or a
+    /// monitor change: the window moves and nothing in the game is told, so no method this mod
+    /// postfixes ever runs. If the frame does not follow, the game draws the old size into the
+    /// new window and the engine resamples it, which is precisely the defect the whole mod
+    /// exists to remove.</para>
+    ///
+    /// <para><b>This test was written because the mod failed it.</b> Up to 0.1.2 the resize was
+    /// watched through Godot's <c>size_changed</c> signal, which is a <c>Viewport</c> signal and
+    /// not a window one: it is emitted from <c>Viewport::_set_size</c>, which returns early when
+    /// the viewport size is unchanged, and this mod pins the viewport with
+    /// <c>ContentScaleSize</c>. So a resized window left the pinned viewport alone, the signal
+    /// stayed silent, and the frame kept its old size until the player next opened the settings
+    /// page. See <c>WindowWatcher</c> for the replacement.</para>
+    ///
+    /// <para><b>Resizes the window directly, which is the point.</b> Every other route into the
+    /// mod goes through a method it postfixes, so any of them would pass with the per-frame
+    /// check deleted. This one is the only route that does not, which is why it is the only one
+    /// that catches this.</para>
+    ///
+    /// <para>Shrinks rather than grows, so the request cannot be clamped by the screen and come
+    /// back as no change at all, which would make the test vacuous.</para>
+    /// </summary>
+    [GameTest(RequiresDisplay = true)]
+    public static IEnumerator TheFrameFollowsAWindowResize()
+    {
+        if (DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
+            Harness.Inapplicable("the window is not windowed, so it cannot be resized");
+
+        var original = DisplayServer.WindowGetSize();
+        var resized = original - new Vector2I(64, 32);
+        if (resized.X <= 0 || resized.Y <= 0)
+            Harness.Inapplicable($"a {original.X}x{original.Y} window is too small to shrink");
+
+        DisplayServer.WindowSetSize(resized);
+        yield return Wait.Frames(3);
+
+        var window = DisplayServer.WindowGetSize();
+        var viewport = ActualResolutionApi.ViewportSize;
+        var divisor = ActualResolutionApi.Divisor;
+        var unresampled = ActualResolutionApi.IsUnresampled;
+
+        // Before anything can throw. Three frames again, so the check that follows the window
+        // back has run before the next test measures anything.
+        DisplayServer.WindowSetSize(original);
+        yield return Wait.Frames(3);
+
+        if (window == original)
+            Harness.Inapplicable(
+                $"the window would not resize on this display; it is still " +
+                $"{original.X}x{original.Y}");
+
+        var expected = Geometry.ContentSizeFor(window, divisor);
+        if (!Mathf.IsEqualApprox(viewport.X, expected.X) || !Mathf.IsEqualApprox(viewport.Y, expected.Y))
+            throw new AssertionException(
+                $"the window was resized to {window.X}x{window.Y} and the frame should have " +
+                $"followed it to {expected.X}x{expected.Y}, but it is {viewport.X}x{viewport.Y}. " +
+                "Nothing told the mod the window moved. " + ActualResolutionApi.DescribeState());
+
+        if (!unresampled)
+            throw new AssertionException(
+                $"the frame followed the window to {viewport.X}x{viewport.Y} but is still " +
+                $"resampled on its way to a {window.X}x{window.Y} window. " +
+                ActualResolutionApi.DescribeState());
+
+        var restored = DisplayServer.WindowGetSize();
+        if (restored != original)
+            throw new AssertionException(
+                $"the window did not go back to {original.X}x{original.Y}; it is now " +
+                $"{restored.X}x{restored.Y}, which every test after this one will measure");
+    }
+
+    /// <summary>
     /// A world position that is explored, stationary and away from the spaceship's own
     /// clutter. The same anchor the harness's own screen tests use.
     /// </summary>
